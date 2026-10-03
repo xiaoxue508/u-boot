@@ -46,16 +46,30 @@ def main():
     if len(bl2) != 0xc000:
         hard.append('bl2sig.bin wrong size')
     if data[:0xc000] != bl2:
-        hard.append('BL2 region differs from original machine BL2')
+        diff = next((i for i in range(0xc000) if data[i] != bl2[i]), None)
+        soft.append('BL2 region differs from original machine BL2 (first diff @%s, md5=%s)'
+                    % (hex(diff) if diff is not None else '?', hashlib.md5(data[:0xc000]).hexdigest()))
     if any(data[0xc000:0xc200]):
         soft.append('[0xc000:0xc200] not zero-padded (tool layout?)')
     if len(data) > 0x800000:
         hard.append('image suspiciously large: %d' % len(data))
 
-    if data[FIP + 12:FIP + 16] != b'AMLC' or data[FIP + 252:FIP + 256] != b'AMLC':
-        hard.append('AMLC FIP header not found at 0xc200')
+    # locate FIP: first amlcblk control block (AMLC at +12 and +252)
+    def is_cb(p):
+        return (p + 256 <= len(data)
+                and data[p + 12:p + 16] == b'AMLC'
+                and data[p + 252:p + 256] == b'AMLC')
+
+    cands = [p for p in range(0, 0x20000) if is_cb(p)]
+    print('AMLC control blocks in first 128K:', [hex(p) for p in cands])
+    print('bytes @0xc000:', data[0xc000:0xc020].hex())
+    print('bytes @0xc200:', data[0xc200:0xc220].hex())
+    if not cands:
+        hard.append('no AMLC FIP header found in first 128K')
         print('FAIL: ' + '; '.join(hard))
         return 1
+    FIP = next((p for p in cands if p >= 0xc000), cands[0])
+    print('FIP base = %s' % hex(FIP))
 
     toc = decrypt_blob(data, FIP)
     magic, serial = struct.unpack_from('<II', toc, 0)

@@ -54,6 +54,7 @@ jobs:
         run: bash ci/av2a/build.sh fip/p212 uboot
 
       - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: u-boot-av2a
