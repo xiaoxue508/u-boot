@@ -32,7 +32,7 @@ jobs:
       - name: Install deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu bison flex libssl-dev python3-dev swig uuid-dev
+          sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu bison flex libssl-dev python3-dev swig uuid-dev libgnutls28-dev
           python3 -m pip install --user pycryptodome
 
       - name: Patch p212 dts memory 2GB -> 1GB (S905L3B AV2A)
