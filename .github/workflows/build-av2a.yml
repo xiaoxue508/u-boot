@@ -1,0 +1,63 @@
+name: build-av2a
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['**']
+    paths:
+      - 'ci/av2a/**'
+      - '.github/workflows/build-av2a.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork (ci files)
+        uses: actions/checkout@v4
+
+      - name: Checkout u-boot (pinned)
+        uses: actions/checkout@v4
+        with:
+          repository: unifreq/u-boot
+          ref: 711150fc6fe7a125cc1133841acc802570478007
+          path: uboot
+
+      - name: Checkout amlogic-boot-fip (pinned)
+        uses: actions/checkout@v4
+        with:
+          repository: unifreq/amlogic-boot-fip
+          ref: 59c9b835b401cf3781b0efafbce9cea2c861531d
+          path: fip
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu bison flex libssl-dev python3-dev swig uuid-dev
+          python3 -m pip install --user pycryptodome
+
+      - name: Patch p212 dts memory 2GB -> 1GB (S905L3B AV2A)
+        run: |
+          sed -i 's/reg = <0x0 0x0 0x0 0x80000000>;/reg = <0x0 0x0 0x0 0x40000000>;/' \
+            uboot/dts/upstream/src/arm64/amlogic/meson-gxl-s905x-p212.dtsi
+          grep -A1 'memory@0' uboot/dts/upstream/src/arm64/amlogic/meson-gxl-s905x-p212.dtsi
+          grep -q '0x40000000' uboot/dts/upstream/src/arm64/amlogic/meson-gxl-s905x-p212.dtsi
+
+      - name: Build u-boot (BL33)
+        run: |
+          make -C uboot CROSS_COMPILE=aarch64-linux-gnu- p212_defconfig
+          make -C uboot CROSS_COMPILE=aarch64-linux-gnu- -j"$(nproc)"
+          mkdir -p ci/av2a/out
+          cp uboot/u-boot.bin ci/av2a/out/u-boot-bl33.bin
+          strings uboot/u-boot.bin | grep -aE '^U-Boot [0-9]' | head -3
+
+      - name: Package FIP image (original BL2/BL30/BL301/BL31 + new BL33)
+        run: bash ci/av2a/build.sh fip/p212 uboot
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: u-boot-av2a
+          path: |
+            ci/av2a/out/u-boot-bl33.bin
+            ci/av2a/out/u-boot-full.bin
+          if-no-files-found: error
